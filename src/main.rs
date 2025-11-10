@@ -1,7 +1,4 @@
-use std::{
-    io::stdout,
-    time::{Duration, Instant},
-};
+use std::io::stdout;
 
 use color_eyre::Result;
 use crossterm::{
@@ -10,13 +7,12 @@ use crossterm::{
 };
 use ratatui::{
     DefaultTerminal, Frame,
-    crossterm::event::{self, Event, KeyCode, KeyEventKind, MouseEventKind},
-    layout::{Position, Rect},
-    style::Color,
+    crossterm::event::{self, Event, KeyCode, KeyEventKind},
+    style::{Color, Style},
     symbols::Marker,
     widgets::{
-        Block, Widget,
-        canvas::{Canvas, Circle, Rectangle},
+        Block, Padding, Widget,
+        canvas::{Canvas, Line, Rectangle},
     },
 };
 
@@ -30,18 +26,20 @@ fn main() -> Result<()> {
     app_result
 }
 
+#[derive(Clone, Copy)]
+enum Chips {
+    Yellow,
+    Red,
+    Empty,
+}
+
 struct App {
     exit: bool,
     x: f64,
     y: f64,
-    ball: Circle,
-    playground: Rect,
-    vx: f64,
-    vy: f64,
-    tick_count: u64,
     marker: Marker,
-    points: Vec<Position>,
-    is_drawing: bool,
+    color: Color,
+    placements: [[Chips; 6]; 7],
 }
 
 impl App {
@@ -50,39 +48,19 @@ impl App {
             exit: false,
             x: 0.0,
             y: 0.0,
-            ball: Circle {
-                x: 20.0,
-                y: 40.0,
-                radius: 10.0,
-                color: Color::Yellow,
-            },
-            playground: Rect::new(10, 10, 200, 100),
-            vx: 1.0,
-            vy: 1.0,
-            tick_count: 0,
             marker: Marker::Dot,
-            points: vec![],
-            is_drawing: false,
+            color: Color::Yellow,
+            placements: [[Chips::Empty; 6]; 7],
         }
     }
 
     pub fn run(mut self, mut terminal: DefaultTerminal) -> Result<()> {
-        let tick_rate = Duration::from_millis(16);
-        let mut last_tick = Instant::now();
         while !self.exit {
             terminal.draw(|frame| self.draw(frame))?;
-            let timeout = tick_rate.saturating_sub(last_tick.elapsed());
-            if event::poll(timeout)? {
-                match event::read()? {
-                    Event::Key(key) => self.handle_key_press(key),
-                    Event::Mouse(event) => self.handle_mouse_event(event),
-                    _ => (),
-                }
-            }
-
-            if last_tick.elapsed() >= tick_rate {
-                self.on_tick();
-                last_tick = Instant::now();
+            match event::read()? {
+                Event::Key(key) => self.handle_key_press(key),
+                Event::Mouse(_) => (),
+                _ => (),
             }
         }
         Ok(())
@@ -94,6 +72,7 @@ impl App {
         }
         match key.code {
             KeyCode::Char('q') => self.exit = true,
+            KeyCode::Char('c') => self.color = Color::Green,
             KeyCode::Down | KeyCode::Char('j') => self.y += 1.0,
             KeyCode::Up | KeyCode::Char('k') => self.y -= 1.0,
             KeyCode::Right | KeyCode::Char('l') => self.x += 1.0,
@@ -102,61 +81,49 @@ impl App {
         }
     }
 
-    fn handle_mouse_event(&mut self, event: event::MouseEvent) {
-        match event.kind {
-            MouseEventKind::Down(_) => self.is_drawing = true,
-            MouseEventKind::Up(_) => self.is_drawing = false,
-            MouseEventKind::Drag(_) => {
-                self.points.push(Position::new(event.column, event.row));
-            }
-            _ => {}
-        }
-    }
-
-    fn on_tick(&mut self) {
-        self.tick_count += 1;
-        // only change marker every 180 ticks (3s) to avoid stroboscopic effect
-        if (self.tick_count % 180) == 0 {
-            self.marker = match self.marker {
-                Marker::Dot => Marker::Braille,
-                Marker::Braille => Marker::Block,
-                Marker::Block => Marker::HalfBlock,
-                Marker::HalfBlock => Marker::Bar,
-                Marker::Bar => Marker::Dot,
-            };
-        }
-        // bounce the ball by flipping the velocity vector
-        let ball = &self.ball;
-        let playground = self.playground;
-        if ball.x - ball.radius < f64::from(playground.left())
-            || ball.x + ball.radius > f64::from(playground.right())
-        {
-            self.vx = -self.vx;
-        }
-        if ball.y - ball.radius < f64::from(playground.top())
-            || ball.y + ball.radius > f64::from(playground.bottom())
-        {
-            self.vy = -self.vy;
-        }
-
-        self.ball.x += self.vx;
-        self.ball.y += self.vy;
-    }
-
     fn draw(&self, frame: &mut Frame) {
-        frame.render_widget(self.c4_canvas(frame.area()), frame.area());
+        frame.render_widget(self.c4_canvas(), frame.area());
     }
 
-    fn c4_canvas(&self, area: Rect) -> impl Widget {
-        let left = 0.0;
-        let right = f64::from(area.width);
-        let bottom = 0.0;
-        let top = f64::from(area.height).mul_add(2.0, -4.0);
+    fn c4_canvas(&self) -> impl Widget {
         Canvas::default()
-            .block(Block::bordered().title("Rects"))
+            .block(
+                Block::bordered()
+                    .padding(Padding::new(110, 110, 10, 10))
+                    .border_style(Style::new().fg(self.color))
+                    .title("Connect4"),
+            )
             .marker(self.marker)
-            .x_bounds([left, right])
-            .y_bounds([bottom, top])
-            .paint(|ctx| {})
+            .x_bounds([0.0, 7.0])
+            .y_bounds([0.0, 6.0])
+            .paint(|ctx| {
+                ctx.draw(&Rectangle {
+                    x: 0.0,
+                    y: 1.0,
+                    width: 7.0,
+                    height: 6.0,
+                    color: self.color,
+                });
+
+                for x in 0..=7 {
+                    ctx.draw(&Line {
+                        x1: x as f64,
+                        y1: 0.0,
+                        x2: x as f64,
+                        y2: 6.0,
+                        color: self.color,
+                    });
+                }
+
+                for y in 0..=6 {
+                    ctx.draw(&Line {
+                        x1: 0.0,
+                        y1: y as f64,
+                        x2: 7.0,
+                        y2: y as f64,
+                        color: self.color,
+                    });
+                }
+            })
     }
 }
