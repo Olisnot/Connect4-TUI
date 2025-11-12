@@ -13,7 +13,7 @@ use ratatui::{
     symbols::Marker,
     widgets::{
         Block, Widget,
-        canvas::{Canvas, Line, Rectangle},
+        canvas::{Canvas, Circle, Line, Rectangle},
     },
 };
 
@@ -36,22 +36,28 @@ enum Chips {
 
 struct App {
     exit: bool,
-    x: f64,
-    y: f64,
     marker: Marker,
     color: Color,
-    placements: [[Chips; 6]; 7],
+    chip_circle: Circle,
+    placements: [[Option<Circle>; 6]; 7],
 }
 
 impl App {
-    const fn new() -> Self {
+    fn new() -> Self {
+        let mut grid: [[Option<Circle>; 6]; 7] =
+            std::array::from_fn(|_| std::array::from_fn(|_| None));
+
         Self {
             exit: false,
-            x: 0.0,
-            y: 0.0,
             marker: Marker::HalfBlock,
             color: Color::Yellow,
-            placements: [[Chips::Empty; 6]; 7],
+            chip_circle: Circle {
+                x: 0.5,
+                y: 6.5,
+                radius: 0.2,
+                color: Color::Yellow,
+            },
+            placements: grid,
         }
     }
 
@@ -74,10 +80,16 @@ impl App {
         match key.code {
             KeyCode::Char('q') => self.exit = true,
             KeyCode::Char('c') => self.color = Color::Red,
-            KeyCode::Down | KeyCode::Char('j') => self.y += 1.0,
-            KeyCode::Up | KeyCode::Char('k') => self.y -= 1.0,
-            KeyCode::Right | KeyCode::Char('l') => self.x += 1.0,
-            KeyCode::Left | KeyCode::Char('h') => self.x -= 1.0,
+            KeyCode::Right => {
+                if self.chip_circle.x < 6.5 {
+                    self.chip_circle.x += 1.0;
+                }
+            }
+            KeyCode::Left => {
+                if self.chip_circle.x > 0.5 {
+                    self.chip_circle.x -= 1.0;
+                }
+            }
             _ => {}
         }
     }
@@ -131,6 +143,8 @@ impl App {
                         color: self.color,
                     });
                 }
+
+                ctx.draw(&self.chip_circle);
             })
     }
 
