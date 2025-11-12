@@ -27,13 +27,6 @@ fn main() -> Result<()> {
     app_result
 }
 
-#[derive(Clone, Copy)]
-enum Chips {
-    Yellow,
-    Red,
-    Empty,
-}
-
 struct App {
     exit: bool,
     marker: Marker,
@@ -44,8 +37,7 @@ struct App {
 
 impl App {
     fn new() -> Self {
-        let mut grid: [[Option<Circle>; 6]; 7] =
-            std::array::from_fn(|_| std::array::from_fn(|_| None));
+        let grid: [[Option<Circle>; 6]; 7] = std::array::from_fn(|_| std::array::from_fn(|_| None));
 
         Self {
             exit: false,
@@ -90,6 +82,7 @@ impl App {
                     self.chip_circle.x -= 1.0;
                 }
             }
+            KeyCode::Enter => self.add_to_placements(),
             _ => {}
         }
     }
@@ -145,6 +138,12 @@ impl App {
                 }
 
                 ctx.draw(&self.chip_circle);
+
+                for col in self.placements.iter() {
+                    for chip in col.iter().flatten() {
+                        ctx.draw(chip);
+                    }
+                }
             })
     }
 
@@ -185,5 +184,37 @@ impl App {
         let y = inner.y + (inner.height.saturating_sub(snapped_h)) / 2;
 
         Rect::new(x, y, snapped_w, snapped_h)
+    }
+
+    fn add_to_placements(&mut self) {
+        let selected_col = self.chip_circle.x as usize;
+        for (i, chip) in self.placements[selected_col].iter_mut().enumerate() {
+            if chip.is_none() {
+                match i {
+                    0 => self.chip_circle.y = 0.5,
+                    1 => self.chip_circle.y = 1.5,
+                    2 => self.chip_circle.y = 2.5,
+                    3 => self.chip_circle.y = 3.5,
+                    4 => self.chip_circle.y = 4.5,
+                    5 => self.chip_circle.y = 5.5,
+                    _ => break,
+                }
+
+                chip.replace(self.chip_circle.clone());
+                match self.color {
+                    Color::Yellow => self.color = Color::Red,
+                    Color::Red => self.color = Color::Yellow,
+                    _ => {}
+                }
+
+                self.chip_circle = Circle {
+                    x: 0.5,
+                    y: 6.5,
+                    radius: 0.2,
+                    color: self.color,
+                };
+                break;
+            }
+        }
     }
 }
